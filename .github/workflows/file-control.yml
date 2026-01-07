@@ -1,0 +1,80 @@
+name: File Edition Control
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  file-check:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+      
+    - name: Check for large files
+      run: |
+        echo "Checking for files larger than 10MB..."
+        large_files=$(find . -type f -size +10M -not -path "./.git/*")
+        if [ -n "$large_files" ]; then
+          echo "⚠️ Warning: Large files detected:"
+          echo "$large_files"
+          exit 1
+        else
+          echo "✅ No large files detected"
+        fi
+        
+    - name: Check for sensitive files
+      run: |
+        echo "Checking for potentially sensitive files..."
+        sensitive_patterns=("*.pem" "*.key" "*.p12" "*.pfx" "*.env" "*credentials*" "*secrets*")
+        found_sensitive=0
+        for pattern in "${sensitive_patterns[@]}"; do
+          files=$(find . -type f -name "$pattern" -not -path "./.git/*" 2>/dev/null || true)
+          if [ -n "$files" ]; then
+            echo "⚠️ Warning: Potential sensitive file detected: $files"
+            found_sensitive=1
+          fi
+        done
+        if [ $found_sensitive -eq 0 ]; then
+          echo "✅ No sensitive files detected"
+        fi
+        
+    - name: Validate file encoding
+      run: |
+        echo "Checking file encoding (UTF-8)..."
+        if command -v file &> /dev/null; then
+          # Check text files are UTF-8 encoded
+          non_utf8=$(find . -type f \( -name "*.py" -o -name "*.md" -o -name "*.txt" \) -not -path "./.git/*" -exec file {} \; | grep -v "UTF-8" || true)
+          if [ -n "$non_utf8" ]; then
+            echo "⚠️ Warning: Non-UTF-8 files detected:"
+            echo "$non_utf8"
+          else
+            echo "✅ All text files are UTF-8 encoded"
+          fi
+        fi
+        
+    - name: Check file permissions
+      run: |
+        echo "Checking for executable files that shouldn't be..."
+        # Find files with execute permissions (excluding .git directory)
+        executable_files=$(find . -type f -executable -not -path "./.git/*" -not -name "*.sh" || true)
+        if [ -n "$executable_files" ]; then
+          echo "⚠️ Warning: Unexpected executable files found:"
+          echo "$executable_files"
+        else
+          echo "✅ No unexpected executable files"
+        fi
+        
+    - name: File change summary
+      run: |
+        echo "📊 File change summary:"
+        if [ "${{ github.event_name }}" = "pull_request" ]; then
+          git diff --stat origin/${{ github.base_ref }}...HEAD
+        else
+          git diff --stat HEAD~1...HEAD 2>/dev/null || echo "No previous commit to compare"
+        fi
