@@ -1,5 +1,5 @@
 # LearnPython
-This repository goal at my leaning pace of Python steady and calm
+This repository goals at my learning pace of Python steady and calm
 
 ## Automated Quality Controls
 
